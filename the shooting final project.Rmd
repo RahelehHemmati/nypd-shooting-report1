@@ -1,0 +1,206 @@
+---
+title: "Analysis of NYPD Historic Shooting Incidents"
+author: "Raheleh"
+date: "2025-06-06"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(ggplot2)
+
+```
+
+#Introduction
+
+This project explores shooting incidents data in New York City using data from NYC Open Data. The goal is to explore trends, patterns and characteristics of shooting incidents in NYC. The following are the steps:
+
+
+1. **Importing Data**: Import the dataset into R.
+2. **Cleaning Data**: Correct data, transform variables, and handle missing values.
+3. **Data Visualization**: Create plots to explore distributions and relationships.
+4. **Analysis and Modeling**: Execute statistical evaluations and build a predictive model.
+5. **Bias Discussion**: Highlight potential biases in the data and methodology.
+6. **Conclusion**: Summarize key findings and discuss limitations.
+
+# Data Import
+
+## Data Import
+
+ I imported the shooting dataset using read_csv() from the URL below, I also installed the necessary R packages including: tidyverse, lubridate, Janitor.
+
+```{r import_data}
+url <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+shooting_data <- read_csv(url)
+dim(shooting_data)
+
+```
+The dataset contains 29,744 rows and 21 columns with various information such as occurrence date, location, victim and perpetrator demographics.
+
+## First Few rows of raw data:
+```{r}
+
+shooting_data_raw <- read_csv(url)
+head(shooting_data_raw)
+```
+
+
+# Data Cleaning
+
+I cleaned the dataset by standardizing column names, converting variables to appropriate types, and removing unnecessary columns.
+
+```{r clean_data}
+# Clean column names
+shooting_data <- shooting_data %>% 
+  janitor::clean_names()
+
+# Convert date and time
+shooting_data <- shooting_data %>% 
+  mutate(
+    occur_date = mdy(occur_date),
+    occur_time = parse_time(as.character(occur_time), "%H:%M:%S"),
+    perp_age_group = as.factor(perp_age_group),
+    vic_age_group = as.factor(vic_age_group),
+    perp_sex = as.factor(perp_sex),
+    vic_sex = as.factor(vic_sex),
+    perp_race = as.factor(perp_race),
+    vic_race = as.factor(vic_race),
+    boro = as.factor(boro),
+    jurisdiction_code = as.factor(jurisdiction_code)
+  )
+
+# Remove columns mostly empty or irrelevant for this analysis
+shooting_data <- shooting_data %>% 
+  select(-incident_key, -loc_of_occur_desc, -loc_classfctn_desc, -location_desc)
+
+# Summary of cleaned data
+summary(shooting_data)
+
+```
+
+Some important fields, especially perpetrator demographics, contain many missing values. I replaced missing values in categorical variables with "Unknown" for clarity. I also remove  columns that were mostly empty or not relevant to this analysis including: incident_key,loc_classfctn_desc, location_desc, loc_of_occur_desc. 
+
+```{r missing_data, include=FALSE}
+library(forcats)
+
+shooting_data <- shooting_data %>% 
+  mutate(
+    perp_age_group = fct_na_value_to_level(perp_age_group, level = "Unknown"),
+    perp_sex = fct_na_value_to_level(perp_sex, level = "Unknown"),
+    perp_race = fct_na_value_to_level(perp_race, level = "Unknown")
+  )
+
+# Confirm no NAs remain in these columns
+colSums(is.na(shooting_data))
+
+
+```
+
+# Data Visualization
+
+## Number of shootings by borough
+
+This bar chart shows the distribution of shooting incidents across NYC boroughs.
+
+```{r}
+ggplot(shooting_data, aes(x = boro)) +
+  geom_bar(fill = "steelblue") +
+  labs(title = "Number of Shootings by Borough", x = "Borough", y = "Number of Shootings") +
+  theme_minimal()
+
+
+```
+
+Brooklyn has the highest number of shootings, while Staten Island has the lowest. This raises questions about demographic and social factors affecting crime rates.
+
+## Shooting trends over time
+
+This plot shows the trend of shooting incidents annually.
+```{r}
+shooting_data <- shooting_data %>% 
+  mutate(year = year(occur_date))
+
+yearly_shooting <- shooting_data %>% 
+  count(year)
+
+ggplot(yearly_shooting, aes(x = year, y = n)) +
+  geom_line(color = "red", linewidth = 1) +
+  geom_point(color = "blue") +
+  labs(title = "Shooting Incidents in NYC by Year", x = "Year", y = "Number of Shootings") +
+  theme_minimal()
+
+```
+
+Shootings were at their lowest between 2015 and 2019 but rose significantly during the COVID-19 pandemic period (2019–2022). Further analysis is needed to understand this relationship.
+
+## Number of shootings by perpetrator race
+
+This bar chart shows the distribution of shooting incidents among different races
+
+```{r}
+race_count <- shooting_data %>% 
+  count(perp_race) %>% 
+  arrange(desc(n))
+
+ggplot(race_count, aes(x = reorder(perp_race, -n), y = n)) +
+  geom_bar(stat = "identity", fill = "yellow") +
+  labs(title = "Number of Shootings per Perpetrator Race", x = "Perpetrator Race", y = "Number of Shootings") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+The majority of known perpetrators are recorded as Black or Hispanic. This observation raises important questions about population proportions and other socioeconomic factors.
+
+# Analysis and Modeling
+
+**Predictive Modeling**: Linear Regression of Shooting by Year 
+
+I fit a linear regression model to examine the trend of shootings over the years.
+```{r}
+linear_model <- lm(n ~ year, data = yearly_shooting)
+summary(linear_model)
+
+
+```
+**Interpretation**:
+
+-The coefficient for year is negative, indicating a decreasing trend in shootings over time.
+
+- The p-value is 0.0229, which is less than 0.05, meaning this decreasing trend is statistically significant.
+
+# Bias Discussion
+
+**Sources of Bias**
+ 
+- **Surveillance Bia**s: Some neighborhoods may be policed more heavily, increasing reported incidents there.
+
+- **Reporting Bias**: Racial and demographic data contain many missing values.
+
+- **Structural/Systemic Bias**: Social and economic inequalities influence crime patterns.
+
+- **Data Gaps**: Many unknown or missing values weaken the reliability of some conclusions.
+
+**Personal Bias and Mitigation**
+
+As a student analyst, I acknowledge that my interpretation may be influenced by personal and cultural perspectives. To mitigate this:
+
+- I highlighted dataset limitations and biases.
+
+- I used neutral language to avoid stigmatization.
+
+- I interpreted demographic data cautiously without overgeneralization.
+
+# Conclusion
+
+- Brooklyn had the highest number of shooting incidents, while Staten Island had the lowest.
+
+- Shootings peaked during the COVID-19 pandemic (2019–2022).
+
+- Among known cases, a disproportionately high number of reported perpetrators were categorized as Black or Hispanic.
